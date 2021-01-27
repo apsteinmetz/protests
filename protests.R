@@ -9,6 +9,7 @@ attrib <- "Source: Armed Conflict Location & Event Data Project (ACLED) www.acle
 library(tidyverse)
 library(readxl)
 library(wesanderson)
+library(lubridate)
 
 # "https://acleddata.com/download/22846/"
 
@@ -33,6 +34,7 @@ protests <- protests_raw %>%
    mutate(alignment = "unspecified") %>%
    mutate(alignment = ifelse(str_detect(ACTOR,"Forces"),"government",alignment)) %>%
    mutate(alignment = ifelse(str_detect(ACTOR,"Patriot"),"right",alignment)) %>%
+   mutate(alignment = ifelse(str_detect(ACTOR,"Liberty"),"right",alignment)) %>%
    mutate(alignment = ifelse(str_detect(ACTOR,"GOP"),"right",alignment)) %>%
    mutate(alignment = ifelse(str_detect(ACTOR,"Republican"),"right",alignment)) %>%
    mutate(alignment = ifelse(str_detect(ACTOR,"Regiment"),"right",alignment)) %>%
@@ -103,6 +105,7 @@ pie_data <- protests %>%
    count(EVENT_TYPE,sort = TRUE) %>%
    mutate(label = paste0(EVENT_TYPE," ",round(n/sum(n)*100),"%")) %>%
    {.}
+
 pie(pie_data$n,
     labels = pie_data$label,
     main="Unrest in America 2020-Jan 2021")
@@ -118,13 +121,11 @@ protests %>%
    ggplot(aes(reorder(LOCATION,-rowid),n,fill=EVENT_TYPE)) + geom_col() +
    coord_flip() +
    labs(y="Event Count",
+        x="",
         title="Unrest in America 2020-Jan 2021",
         caption = attrib)  +
    scale_y_continuous(labels = scales::comma) +
    scale_fill_manual(values = pal)
-
-
-
 
 protests %>%
    filter(EVENT_TYPE %in% c("Protests","Riots")) %>%
@@ -159,7 +160,7 @@ active_groups <- protests %>%
    filter(EVENT_TYPE %in% c("Protests","Riots")) %>%
    filter(alignment %in% c("left","right")) %>%
    count(ACTOR,sort=TRUE) %>%
-   filter(n > 100) %>%
+   filter(n > 50) %>%
    select(ACTOR)
 
 
@@ -167,9 +168,13 @@ active_groups <- protests %>%
 protests %>%
    filter(EVENT_TYPE %in% c("Protests","Riots")) %>%
    filter(alignment %in% c("left","right")) %>%
+   # group_by(alignment,ACTOR,EVENT_TYPE) %>%
+   # count(EVENT_TYPE) %>%
+   right_join(active_groups) %>%
+   # Combine all groups labeled "militia" and retally
+   mutate(ACTOR = if_else(str_detect(ACTOR,"Militia"),"Various Militia",ACTOR)) %>%
    group_by(alignment,ACTOR,EVENT_TYPE) %>%
    count(EVENT_TYPE) %>%
-   right_join(active_groups) %>%
    group_by(ACTOR) %>%
    mutate(per = prop.table(n)) %>%
    filter(EVENT_TYPE=="Riots") %>%
@@ -178,7 +183,64 @@ protests %>%
    labs(y="Percent of Riot Events",
         title="Unrest in America 2020-Jan 2021",
         caption = attrib,
-        subtitle = "Most violent actors of those present at more than 100 events.")  +
+        x = "Actor",
+        subtitle = "Most violent actors of those present at more than 50 events.")  +
    scale_y_continuous(labels = scales::percent) +
    scale_fill_manual(values = wesanderson::wes_palette("BottleRocket2",n=2)) +
    coord_flip()
+
+# FATALTIES
+
+deaths_by_city <-
+   protests %>%
+   filter(EVENT_TYPE %in% c("Protests","Riots")) %>%
+   select(EVENT_ID_CNTY,EVENT_DATE,LOCATION,FATALITIES) %>%
+   filter(FATALITIES > 0) %>%
+   unique() %>%
+   arrange(EVENT_DATE) %>%
+   group_by(LOCATION) %>%
+   tally(FATALITIES) %>%
+   arrange(desc(n))
+
+
+deaths_by_city  %>%
+   ggplot(aes(reorder(LOCATION,n),n)) + geom_col() +
+   coord_flip() +
+   labs(y="Cumulative Fatalities",
+        title="Unrest in America 2020-Jan 2021",
+        subtitle = "Deaths during Riots or Protests",
+        caption = attrib,
+        x = "Location")
+
+deaths <- protests %>%
+   filter(EVENT_TYPE %in% c("Protests","Riots")) %>%
+   select(EVENT_ID_CNTY,EVENT_DATE,LOCATION,FATALITIES,alignment) %>%
+   filter(FATALITIES > 0) %>%
+   nest(data=c(alignment)) %>%
+   unique() %>%
+   arrange(EVENT_DATE) %>%
+   mutate(event_week = ceiling_date(EVENT_DATE,unit = "week"))
+
+deaths$data
+
+# primary_actor <- tibble("alignment"="right") %>% fix()
+#primary_actor$alignment <-  factor(primary_actor$alignment,levels=c("right","both","left"))
+#deaths <- bind_cols(deaths,primary_actor) %>%
+#   mutate(alignment = as_factor(alignment))
+
+
+
+# deaths %>%
+# #    group_by(event_week,alignment) %>%
+#    group_by(event_week,alignment) %>%
+# #   group_by(EVENT_DATE,LOCATION) %>%
+#    tally(FATALITIES) %>%
+# #    ggplot(aes(date(event_week),n,fill=alignment)) + geom_col() +
+#    ggplot(aes(event_week,n,fill=alignment)) + geom_col() +
+#     scale_y_continuous(labels=scales::label_comma(accuracy = 1)) +
+#  #   scale_x_date(date_breaks = "4 weeks") +
+#     labs(y="Weekly Fatalities",
+#          title="Unrest in America 2020-Jan 2021",
+#          subtitle = "Weekly Fatality Trends during Riots and Demonstrations",
+#          caption = attrib,
+#          x = "Date")f
