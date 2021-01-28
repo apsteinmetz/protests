@@ -13,7 +13,7 @@ library(lubridate)
 
 # "https://acleddata.com/download/22846/"
 
-protests_raw <- read_excel("data/USA_2020_2021_Jan08update.xlsx")
+protests_raw <- read_excel("data/USA_2020_2021_Jan22.xlsx")
 
 # make long data pivoted on actors
 # clean up and organize the data
